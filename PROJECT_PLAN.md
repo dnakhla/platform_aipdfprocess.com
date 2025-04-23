@@ -90,29 +90,37 @@ aipdf-processing
 
 ## Terraform Structure
 
+The Terraform code is organized into modules for reusability and environments for deployment isolation. See `terraform/TERRAFORM_STRUCTURE.md` for full details and example code snippets.
+
 ```
 terraform/
-├── environments
-│   ├── dev
-│   │   └── main.tf
-│   ├── staging
-│   │   └── main.tf
-│   └── prod
-│       └── main.tf
-├── modules
-│   ├── frontend
-│   │   └── main.tf
-│   ├── api-gateway
-│   │   └── main.tf
-│   ├── lambda-functions
-│   │   └── main.tf
-│   ├── storage
-│   │   └── main.tf
-│   └── database
-│       └── main.tf
-├── global
-│   └── main.tf
-└── terraform.tf
+├── environments/             # Environment-specific configurations
+│   ├── dev/                  # Development environment
+│   │   ├── main.tf           # Dev environment module instantiations
+│   │   ├── variables.tf      # Dev-specific variables
+│   │   └── outputs.tf        # Dev environment outputs
+│   ├── staging/              # Staging environment (Placeholder)
+│   │   └── ...
+│   └── prod/                 # Production environment (Placeholder)
+│       └── ...
+├── modules/                  # Reusable infrastructure modules
+│   ├── api/                  # API Gateway (HTTP API) module
+│   │   └── ...
+│   ├── database/             # Database module (DynamoDB)
+│   │   └── ...
+│   ├── frontend/             # Frontend module (S3, CloudFront)
+│   │   └── ...
+│   ├── orchestrator/         # Orchestrator Lambda module
+│   │   └── ...
+│   ├── pdf-processing/       # PDF processing Lambda module
+│   │   └── ...
+│   └── storage/              # Storage module (S3)
+│       └── ...
+├── global/                   # Global resources (e.g., Route53 zones - Placeholder)
+│   └── ...
+├── backend.tf                # Backend configuration (e.g., S3 state)
+├── providers.tf              # Provider configuration (e.g., AWS region)
+└── versions.tf               # Terraform and provider version constraints
 ```
 
 ## PDF Tools Implementation
