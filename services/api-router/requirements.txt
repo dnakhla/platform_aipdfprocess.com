@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+boto3
+pydantic
+mangum
+python-multipart
+requests
+python-jose[cryptography]
+stripe

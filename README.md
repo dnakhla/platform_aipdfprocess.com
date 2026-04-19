@@ -1,163 +1,68 @@
-## Project Structure
+# AIPDF Processing Platform
 
-- `terraform/`: Contains the Terraform configuration for the AWS Lambda function and related resources.
-  - `variables.tf`: Defines input variables (e.g., `resource_prefix`, `aws_region`).
-  - `providers.tf`: Configures the AWS provider.
-  - `iam.tf`: Defines the Lambda execution IAM role.
-  - `lambda.tf`: Defines the Lambda function.
-  - `outputs.tf`: Defines outputs (e.g., Lambda ARN).
-  - `lambda_function.zip`: Placeholder for the Lambda function deployment package.
-- `tests/`: Contains tests for the Terraform configuration using Go and Terratest.
-  - `terraform_test.go`: Basic tests to validate the Terraform setup.
+A high-performance, serverless PDF processing engine built with AWS Lambda, S3, and Python 3.12.
 
-## Usage
+## 🚀 Overview
+
+AIPDF is a distributed PDF processing engine designed for scale, speed, and reliability. It decomposes complex document tasks into deterministic, asynchronous pipelines powered by specialized capability-based workers.
+
+- **Fast & Lightweight:** API Router built on Python 3.12 + FastAPI.
+- **Asynchronous by Default:** SQS-backed job dispatch with automatic retries and DLQ.
+- **Specialized Workers:** Containerized workers using `PyMuPDF` and `pikepdf`.
+- **AI-Powered (Phase 2):** Natural-language orchestration to plan and execute complex document cleanup tasks.
+
+## 🏗 Architecture
+
+### 1. Control Plane
+- **API Router:** Handles auth, file uploads (presigned URLs), and job creation.
+- **Job Dispatcher:** Reads the SQS queue and sequences worker calls.
+- **DynamoDB:** Manages job state, user quotas, and API key permissions.
+
+### 2. Processing Layer (Capability Workers)
+- **Structural:** Split, merge, rotate, blank-page removal.
+- **Extract:** Native text extraction, OCR (Tesseract), image extraction.
+- **Optimize:** Compression, repair, linearization, sanitization.
+
+### 3. AI Layer
+- **AI Planner:** Uses LLMs to translate "clean this scanned packet" into worker chains.
+
+## 🛠 Project Structure
+
+```text
+├── infra/
+│   └── terraform/           # Infrastructure as Code (ECR, SQS, Lambda, S3, DDB, API Gateway)
+├── services/
+│   ├── api-router/          # FastAPI entry point
+│   ├── job-dispatcher/      # Async orchestrator
+│   ├── worker-structural/   # PDF structural operations (Container)
+│   ├── worker-extract/      # Text & OCR extraction (Container)
+│   ├── worker-optimize/     # PDF optimization (Container)
+│   └── ai-planner/          # NL-to-Operation translator
+├── portal/                  # Vanilla JS frontend (Static S3/CloudFront)
+└── docker-compose.yml       # Local development with Localstack
+```
+
+## 🚦 Getting Started
 
 ### Prerequisites
+- Python 3.12
+- Docker & Docker Compose
+- AWS CLI (for Localstack interaction)
 
-- Terraform installed
-- AWS credentials configured
-- Go installed (for running tests)
-
-### Initialization
-
-Navigate to the `terraform` directory and initialize Terraform:
-
+### Local Development
 ```bash
-cd terraform
-terraform init
+# Build and start the engine
+docker-compose up --build
+
+# Run tests
+pytest
 ```
 
-### Planning
+## 🔒 Security
+- Hashed API keys in DynamoDB.
+- Cognito-managed user authentication.
+- Least-privilege IAM roles for all Lambdas.
+- S3 server-side encryption and lifecycle rules.
 
-You can generate an execution plan:
-
-```bash
-# Optionally create a terraform.tfvars file or use -var flag
-terraform plan
-```
-
-### Applying (Optional - For actual deployment)
-
-```bash
-terraform apply
-```
-
-### Testing
-
-Navigate to the `tests` directory and run the tests:
-
-```bash
-cd tests
-go mod tidy # Run once to download dependencies
-go test -v
-```
-=======
-# AI PDF Processing Platform
-
-A serverless, AWS-based platform for PDF manipulation with AI orchestration. 
-
-## Overview
-
-This platform provides a comprehensive set of PDF processing tools implemented as AWS Lambda functions, orchestrated by an AI system that chains operations to achieve complex document processing workflows. The system is designed to be highly scalable, cost-effective, and easy to extend.
-
-## Features
-
-### Core PDF Tools
-- 📄 **Format Conversion**: PDF ↔ PNG/JPEG, PDF ↔ PDF/A
-- 🔍 **Text Extraction**: Extract raw text with OCR fallback
-- 🖼️ **Image Extraction**: Extract images per page or entire document
-- 🔄 **Page Manipulation**: Resize, rotate, split, merge
-- 🗑️ **Clean-up**: Remove blank pages, compress, optimize
-- 🔐 **Security**: Add/remove watermarks, redact sensitive text
-- 📝 **Content Analysis**: Summarize or describe page content using LLM
-
-### Coming Soon
-- 🌐 **Translation**: Translate text to different languages
-- 🏷️ **Classification**: Categorize pages by content type
-- 📊 **Comparison**: Compare two PDFs for differences
-- ✏️ **Annotation**: Add notes, highlights, comments
-
-## Architecture
-
-```
-┌─────────────┐     ┌──────────────┐     ┌───────────────┐
-│ Client      │────►│ API Gateway  │────►│ Orchestrator  │
-└─────────────┘     └──────────────┘     └───────┬───────┘
-                                                 │
-                                                 ▼
-┌──────────────────────────────────────────────────────────┐
-│                    LLM Decision Making                    │
-└───────────────────────────┬──────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                     PDF Tool Lambdas                     │
-├─────────┬─────────┬──────────┬────────────┬─────────────┤
-│ Resize  │ Extract │ Compress │ Summarize  │ Convert     │
-└─────────┴─────────┴──────────┴────────────┴─────────────┘
-                            │
-      ┌───────────────────────────────────────────┐
-      │                                           │
-      ▼                                           ▼
-┌──────────┐                             ┌───────────────┐
-│ Input S3 │                             │ Output S3     │
-└──────────┘                             └───────────────┘
-```
-
-### Key Components
-- **Storage**: S3 buckets for input, intermediate artifacts, and final outputs
-- **Compute**: AWS Lambda functions (one per tool or single multi-action Lambda)
-- **API Layer**: API Gateway to expose services
-- **Orchestrator**: Lambda/Fargate service with LLM integration
-- **State Management**: DynamoDB for job tracking and state persistence
-- **Security**: IAM roles, VPC endpoints, KMS encryption
-
-## Technical Stack
-- **Infrastructure**: AWS CDK/CloudFormation
-- **Runtime**: Node.js/Python/Java (TBD)
-- **CI/CD**: AWS CodePipeline, CodeBuild
-- **Monitoring**: CloudWatch, X-Ray
-- **LLM Integration**: OpenAI/Azure OpenAI API
-
-## Getting Started
-
-### Prerequisites
-- AWS Account
-- Node.js and npm (latest LTS)
-- AWS CLI configured
-- (Optional) Docker for local testing
-
-### Installation
-```bash
-# Clone repository
-git clone https://github.com/yourusername/aipdfprocessing.com.git
-cd aipdfprocessing.com
-
-# Install dependencies
-npm install
-
-# Deploy to AWS (development)
-npm run deploy:dev
-```
-
-## Development Workflow
-
-1. Each PDF tool is developed as a separate Lambda function or action
-2. Local testing with AWS SAM or LocalStack
-3. CI/CD pipeline automatically deploys changes to development environment
-4. Integration tests run against sandboxed AWS environment
-5. Manual promotion to staging/production
-
-## Roadmap
-
-1. ⏳ Project kickoff & IaC baseline
-2. ⏳ Initial tool Lambdas: extract-text, compress, rotate
-3. ⏳ API Gateway & orchestrator prototype
-4. ⏳ LLM integration for guided workflows
-5. ⏳ Expand tool set with OCR, summarize, translate
-6. ⏳ Security hardening, cost-optimization, monitoring
-7. ⏳ Production rollout
-
-## License
-
-[MIT](LICENSE)
+## 📜 License
+MIT

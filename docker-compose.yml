@@ -1,0 +1,124 @@
+x-aws-env: &aws-env
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_ENDPOINT_URL: http://localstack:4566
+  INPUT_BUCKET: aipdf-input-dev
+  OUTPUT_BUCKET: aipdf-output-dev
+  ARTIFACTS_BUCKET: aipdf-artifacts-dev
+
+services:
+  localstack:
+    build:
+      context: ./infra/localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,dynamodb,sqs,idp
+      - SQS_ENDPOINT_STRATEGY=off
+      - DEBUG=0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api-router:
+    image: aipdf-platform-api-router
+    build:
+      context: ./services/api-router
+      network: host
+    ports:
+      - "9010:8000"
+    env_file:
+      - .env
+    environment:
+      <<: *aws-env
+      JOBS_TABLE: aipdf-jobs-dev
+      USERS_TABLE: aipdf-users-dev
+      JOB_QUEUE_URL: http://localstack:4566/000000000000/aipdf-job-queue-dev
+      AI_PLANNER_URL: http://ai-planner:8000
+      FREE_PDFS_PER_MONTH: 5
+      PRICE_PER_PDF_CENTS: 100
+      BILLING_CURRENCY: usd
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+  ai-planner:
+    image: aipdf-platform-ai-planner
+    build:
+      context: ./services/ai-planner
+      network: host
+    ports:
+      - "9014:8000"
+    env_file:
+      - .env
+    environment:
+      <<: *aws-env
+      JOBS_TABLE: aipdf-jobs-dev
+      JOB_QUEUE_URL: http://localstack:4566/000000000000/aipdf-job-queue-dev
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+  job-dispatcher:
+    image: aipdf-platform-job-dispatcher
+    build:
+      context: ./services/job-dispatcher
+      network: host
+    env_file:
+      - .env
+    environment:
+      <<: *aws-env
+      JOBS_TABLE: aipdf-jobs-dev
+      USERS_TABLE: aipdf-users-dev
+      JOB_QUEUE_URL: http://localstack:4566/000000000000/aipdf-job-queue-dev
+      WORKER_STRUCTURAL_URL: http://worker-structural:9001
+      WORKER_EXTRACT_URL: http://worker-extract:9002
+      WORKER_OPTIMIZE_URL: http://worker-optimize:9003
+    depends_on:
+      localstack:
+        condition: service_healthy
+      worker-structural:
+        condition: service_started
+      worker-extract:
+        condition: service_started
+      worker-optimize:
+        condition: service_started
+
+  worker-structural:
+    image: aipdf-platform-worker-structural
+    build:
+      context: ./services/worker-structural
+      network: host
+    ports:
+      - "9001:9001"
+    env_file:
+      - .env
+    environment:
+      <<: *aws-env
+
+  worker-extract:
+    image: aipdf-platform-worker-extract
+    build:
+      context: ./services/worker-extract
+      network: host
+    ports:
+      - "9002:9002"
+    env_file:
+      - .env
+    environment:
+      <<: *aws-env
+
+  worker-optimize:
+    image: aipdf-platform-worker-optimize
+    build:
+      context: ./services/worker-optimize
+      network: host
+    ports:
+      - "9003:9003"
+    env_file:
+      - .env
+    environment:
+      <<: *aws-env

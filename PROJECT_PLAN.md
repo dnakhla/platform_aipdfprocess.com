@@ -1,179 +1,88 @@
-# AI PDF Processing Platform - Implementation Plan
+# AI PDF Processing Platform - Implementation Plan (v2.0)
 
-## Foundation Architecture
+**Date:** 2026-03-17  
+**Status:** Core Backend Engine + Auth Verified (LocalStack)  
+**Architecture:** Python 3.12, SQS-backed Async Processing, Containerized Capability-Based Workers
 
-### Infrastructure as Code
-- **Terraform** for AWS resources provisioning
-- Modular structure with reusable components
-- Remote state in S3 with DynamoDB locking
+## 1. Foundation Architecture (COMPLETE)
 
-### Core Components
+### Infrastructure as Code (Terraform)
+- **Modularized Structure:** `/infra/terraform`
+- **S3 Storage:** Input, Output, and Artifact buckets with lifecycle rules.
+- **DynamoDB:** `jobs` table for state tracking, `users` table for auth/API keys.
+- **Messaging:** SQS Job Queue + Dead Letter Queue (DLQ).
+- **Compute:** 5x Lambdas (API Router, Job Dispatcher, 3 Workers).
+- **ECR:** Repositories for specialized worker container images.
+- **API Gateway:** HTTP API with routes for `/upload`, `/process`, `/status`, and `/download`.
 
-#### Frontend
-- **S3 Static Website** with CloudFront distribution
-  - Alternative: AWS Amplify for CI/CD and hosting
-  - React/Next.js SPA with TypeScript
-  - API integration using AWS SDK for JavaScript
+### Core Services (COMPLETE)
 
-#### Backend API
-- **API Gateway** (REST or HTTP API)
-  - Custom domain with SSL
-  - Request validation and throttling
-  - OpenAPI specification
+#### 1. API Router (`services/api-router`)
+- **Runtime:** Python 3.12 (FastAPI + Mangum)
+- **Role:** Entry point for all client requests.
+- **Features:** S3 presigned URL generation, job creation in DynamoDB, SQS message dispatch, status polling, and download link generation.
+- **Auth:** Cognito JWT + API Key flow implemented and verified.
 
-#### PDF Processing Engine
-- **Lambda Functions** with shared layer architecture
-  - Namespace: `aipdf-processing`
-  - Function naming convention: `aipdf-processing-[tool]-[version]`
+#### 2. Job Dispatcher (`services/job-dispatcher`)
+- **Runtime:** Python 3.12
+- **Role:** Async orchestrator.
+- **Features:** Triggered by SQS, fetches job state, sequences operations, invokes specialized workers, and updates job status.
 
-#### Storage
-- **S3 Buckets**
-  - `aipdf-processing-input-[env]`
-  - `aipdf-processing-output-[env]`
-  - `aipdf-processing-artifacts-[env]`
-  - Object lifecycle policies
+#### 3. Worker: Structural (`services/worker-structural`)
+- **Runtime:** Python 3.12 (Container)
+- **Engine:** PyMuPDF
+- **Capabilities:** Split, Merge, Rotate, Remove Blank Pages, Delete Pages.
 
-#### State Management
-- **DynamoDB**
-  - Tables: `aipdf-processing-jobs`, `aipdf-processing-users`
-  - On-demand capacity or auto-scaling
+#### 4. Worker: Extract (`services/worker-extract`)
+- **Runtime:** Python 3.12 (Container)
+- **Engine:** PyMuPDF + Tesseract OCR
+- **Capabilities:** Extract Text (Native + OCR), Metadata Extraction, ZIP image extraction.
 
-## PDF Lambda Functions Structure
+#### 5. Worker: Optimize (`services/worker-optimize`)
+- **Runtime:** Python 3.12 (Container)
+- **Engine:** pikepdf
+- **Capabilities:** Compress, Repair, Linearize, Sanitize.
 
-### Option 1: Monolithic Lambda with Actions
-```
-aipdf-processing-engine
-├── handlers
-│   ├── index.js (routing based on action parameter)
-│   ├── resize.js
-│   ├── extract-text.js
-│   ├── compress.js
-│   └── ...
-├── lib
-│   ├── pdf-toolkit.js (shared PDF operations)
-│   ├── s3-operations.js
-│   └── error-handling.js
-└── layers
-    ├── pdf-utils (shared dependencies)
-    └── common-utils (AWS SDK, logging)
-```
+## 2. Phase 2: AI & Advanced Orchestration (IN PROGRESS)
 
-### Option 2: Microservice Lambdas
-```
-aipdf-processing
-├── functions
-│   ├── resize
-│   │   └── index.js
-│   ├── extract-text
-│   │   └── index.js
-│   ├── compress
-│   │   └── index.js
-│   └── ...
-├── layers
-│   ├── pdf-utils
-│   └── common-utils
-└── orchestrator
-    └── index.js (LLM integration)
-```
+### AI Planner (`services/ai-planner`)
+- **Runtime:** Python 3.12
+- **Role:** Translates natural language prompts into deterministic operation chains.
+- **Status:** Integrated into API Router (`/v1/process/nl`).
 
-## LLM Orchestration Design
+### Next Steps for AI Pipeline:
+- [ ] Add advanced layout analysis (Docling/Fargate) for complex table extraction.
+- [ ] Implement summarization and redaction tools via LLM.
 
-1. **API Gateway** receives job request with PDF URL/upload + instructions
-2. **Orchestrator Lambda** initializes job in DynamoDB
-3. **LLM Service** analyzes instructions and determines processing steps
-4. **Step Executor** invokes PDF tools in sequence via:
-   - Direct Lambda invocation
-   - Step Functions state machine
-   - Event-driven architecture with SNS/SQS
-5. Results combined and saved to output S3 bucket
-6. Client notified via WebSocket/SNS/EventBridge
+## 3. Phase 3: Frontend & Billing (IN PROGRESS)
 
-## Terraform Structure
+### Frontend Portal (`/portal`)
+- **Tech:** Vanilla JS + Tailwind (S3 + CloudFront hosting).
+- **Features:** Drag-and-drop upload, operation picker, real-time progress bar, download gallery.
+- **Redesign:** Academic research-lab aesthetic (Job #2546 in progress).
 
-The Terraform code is organized into modules for reusability and environments for deployment isolation. See `terraform/TERRAFORM_STRUCTURE.md` for full details and example code snippets.
+### Authentication & API Keys (COMPLETE)
+- [x] Implement Amazon Cognito User Pool emulation in LocalStack.
+- [x] Implement API key issuance and usage metering in DynamoDB.
 
-```
-terraform/
-├── environments/             # Environment-specific configurations
-│   ├── dev/                  # Development environment
-│   │   ├── main.tf           # Dev environment module instantiations
-│   │   ├── variables.tf      # Dev-specific variables
-│   │   └── outputs.tf        # Dev environment outputs
-│   ├── staging/              # Staging environment (Placeholder)
-│   │   └── ...
-│   └── prod/                 # Production environment (Placeholder)
-│       └── ...
-├── modules/                  # Reusable infrastructure modules
-│   ├── api/                  # API Gateway (HTTP API) module
-│   │   └── ...
-│   ├── database/             # Database module (DynamoDB)
-│   │   └── ...
-│   ├── frontend/             # Frontend module (S3, CloudFront)
-│   │   └── ...
-│   ├── orchestrator/         # Orchestrator Lambda module
-│   │   └── ...
-│   ├── pdf-processing/       # PDF processing Lambda module
-│   │   └── ...
-│   └── storage/              # Storage module (S3)
-│       └── ...
-├── global/                   # Global resources (e.g., Route53 zones - Placeholder)
-│   └── ...
-├── backend.tf                # Backend configuration (e.g., S3 state)
-├── providers.tf              # Provider configuration (e.g., AWS region)
-└── versions.tf               # Terraform and provider version constraints
-```
+### Stripe Integration
+- [x] `POST /v1/billing/checkout` -> Stripe Checkout.
+- [x] Webhook handler for credit top-ups.
 
-## PDF Tools Implementation
+## 4. Development & CI/CD (COMPLETE)
 
-| Tool | Function | Dependencies | Layer Requirements |
-|------|----------|--------------|-------------------|
-| Resize | Scale, crop, change aspect ratio | sharp, pdf-lib | pdf-utils |
-| Convert | PDF ↔ image, PDF ↔ PDF/A | ghostscript, imagemagick | pdf-utils | 
-| ExtractText | Get raw text, OCR | pdfjs, tesseract.js | ocr-utils |
-| ExtractImages | Get embedded images | pdf-lib, sharp | pdf-utils |
-| Compress | Optimize file size | ghostscript, imagemagick | pdf-utils |
-| RemoveBlanks | Delete empty pages | pdf-lib, pdfjs | pdf-utils |
-| Rotate | Change page orientation | pdf-lib | pdf-utils |
-| SplitMerge | Modify document structure | pdf-lib | pdf-utils |
-| Watermark | Add/remove watermarks | pdf-lib, jimp | pdf-utils |
-| Redact | Remove sensitive text | pdf-lib, pdfjs | pdf-utils |
-| Summarize | Generate content overview | pdfjs + LLM | pdf-utils, ai-utils |
+### Local Development
+- **Docker Compose:** Stands up Localstack and API services for end-to-end testing.
+- **Tools:** `uv` for dependency management, `pytest` for unit/integration tests.
+- **Verification:** 100% test pass rate for workers and auth flow.
 
-## Implementation Phases
+### GitHub Actions Pipeline
+- [ ] `ci.yaml`: Linting, testing, and security scanning.
+- [ ] `deploy.yaml`: Build/Push ECR images, Zip Lambdas, and Terraform Apply.
 
-### Phase 1: Foundation (Weeks 1-2)
-- Set up Terraform modules and state management
-- Create basic S3 buckets and IAM roles
-- Implement core Lambda layer with PDF processing utilities
-- Deploy basic API Gateway structure
+---
 
-### Phase 2: Core Functions (Weeks 3-4)
-- Implement 3-4 essential PDF tools:
-  - Text extraction
-  - Resize
-  - Compress
-  - Format conversion
-- Create basic logging and error handling
-
-### Phase 3: Orchestration (Weeks 5-6)
-- Implement the LLM orchestrator
-- Set up DynamoDB tables for job tracking
-- Create basic UI for job submission and tracking
-
-### Phase 4: Enhancement (Weeks 7-8)
-- Add remaining PDF tools
-- Implement advanced features (OCR, summarization)
-- Integrate CloudWatch dashboards and alerting
-
-### Phase 5: Production Readiness (Weeks 9-10)
-- Security hardening and penetration testing
-- Performance optimization and cost analysis
-- Documentation and knowledge transfer
-
-## Next Steps
-
-1. Initialize repository structure
-2. Set up Terraform backend configuration
-3. Create initial IAM policies and roles
-4. Implement the first Lambda function prototype
-5. Set up CI/CD pipeline for infrastructure and code deployment
+## Technical Debt / Known Issues
+- [x] `merge` operation in `worker-structural` needs multi-file input handling logic.
+- [x] `extract_images` in `worker-extract` needs ZIP packaging for output.
+- [x] `compress` in `worker-optimize` needs parameter tuning for quality/size tradeoffs.
